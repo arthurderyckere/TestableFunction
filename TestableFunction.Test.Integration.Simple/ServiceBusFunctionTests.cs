@@ -1,60 +1,32 @@
-﻿using Azure.Data.Tables;
-using Azure.Messaging.ServiceBus;
-using Microsoft.Azure.WebJobs;
+﻿using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.WebJobs.ServiceBus;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using TestableFunction.EventTriggers;
-using TestableFunction.Test.Integration.Simple.Fakes;
 using TestableFunction.Test.Integration.Simple.Helpers;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace TestableFunction.Test.Integration.Simple;
 
-public class ServiceBusFunctionTests
+public class ServiceBusFunctionTests : IClassFixture<FunctionFixture>
 {
-    private FakeTableClient _fakeTableClient;
+    private readonly XunitLogger<ServiceBusFunctionTests> _logger;
     private MyServiceBusFunction _sut;
-    private XunitLogger<MyServiceBusFunction> _logger;
 
-    // this is copied from timer function tests, a common fixture would now be helpful
-    public ServiceBusFunctionTests(ITestOutputHelper testOutputHelper)
+    public ServiceBusFunctionTests(FunctionFixture functionFixture, ITestOutputHelper testOutputHelper)
     {
-        _fakeTableClient = new FakeTableClient();
-
-        var startup = new Startup();
-        var host = new HostBuilder()
-            .ConfigureAppConfiguration(configurationBuilder =>
-            {
-                configurationBuilder.AddJsonFile("local.settings.json");
-            })
-            .ConfigureWebJobs((context, builder) =>
-            {
-                builder.Services.AddSingleton<TableClient>(_fakeTableClient);
-
-                new Startup().Configure(new WebJobsBuilderContext
-                {
-                    ApplicationRootPath = context.HostingEnvironment.ContentRootPath,
-                    Configuration = context.Configuration,
-                    EnvironmentName = context.HostingEnvironment.EnvironmentName,
-                }, builder);
-            })
-            .Build();
-
-        _sut = new MyServiceBusFunction();
-        _logger = new XunitLogger<MyServiceBusFunction>(testOutputHelper);
+        _logger = functionFixture.Logger<ServiceBusFunctionTests>(testOutputHelper);
+        _sut = new MyServiceBusFunction();   
     }
 
     [Fact]
     public async Task CanRunServiceBusTrigger()
     {
         // WIP
-        await _sut.RunAsync(FakeServiceBusReceivedMessage.GetQueueItems(), new FakeServiceBusMessageActions(), _logger);
+        await _sut.RunAsync(FakeServiceBusReceivedMessage.GetQueueItems().ToArray(), new FakeServiceBusMessageActions(), _logger);
     }
 }
 
@@ -65,23 +37,9 @@ public class FakeServiceBusMessageActions : ServiceBusMessageActions
 
 public class FakeServiceBusReceivedMessage
 {
-    public static ServiceBusReceivedMessage[] GetQueueItems()
+    public static IEnumerable<ServiceBusReceivedMessage> GetQueueItems()
     {
-        var items = new[]
-        {
-            new
-            {
-                Data = BinaryData.FromString("message"),
-                MessageId = "123456",
-            },
-            new
-            {
-                Data = BinaryData.FromString("message_2"),
-                MessageId = "654321",
-            }
-        };
-
-        return JsonConvert.DeserializeObject<ServiceBusReceivedMessage[]>(JsonConvert.SerializeObject(items));
+        yield return ServiceBusModelFactory.ServiceBusReceivedMessage(BinaryData.FromString("message_1"), "message_1");
+        yield return ServiceBusModelFactory.ServiceBusReceivedMessage(BinaryData.FromString("message_2"), "message_2");
     }
-
 }
